@@ -9,6 +9,7 @@ Welcome to the eCommerce website project built with the MERN stack (MongoDB, Exp
 - **Shopping Cart**: Add, update, and remove items in the cart.
 - **Admin Panel**: Manage products and view all orders.
 - **Responsive Design**: Accessible on both desktop and mobile devices.
+- **Image Storage**: To store images i have used multer package.
 
 ## Technologies Used
 
@@ -19,6 +20,11 @@ Welcome to the eCommerce website project built with the MERN stack (MongoDB, Exp
 - **Styling**: CSS
 
 ## Demo
+![Screenshot](Screenshots/home1.png)
+![Screenshot](Screenshots/home2.png)
+![Screenshot](Screenshots/home3.png)
+![Screenshot](Screenshots/home4.png)
+![Screenshot](Screenshots/home5.png)
 
 1. **Clone the Repository:**
 
