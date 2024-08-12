@@ -18,6 +18,8 @@ Welcome to the eCommerce website project built with the MERN stack (MongoDB, Exp
 - **Authentication**: JWT (JSON Web Tokens)
 - **Styling**: CSS
 
+## Demo
+
 1. **Clone the Repository:**
 
    ```bash
