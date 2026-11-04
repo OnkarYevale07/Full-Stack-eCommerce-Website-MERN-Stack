@@ -1,50 +1,85 @@
-const port = 4005;
+require("dotenv").config();
+const port = process.env.PORT;
 const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
+const { S3Client } = require("@aws-sdk/client-s3");
+const multerS3 = require("multer-s3");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
+const client = require("prom-client");
+
 
 app.use(express.json());
 app.use(cors());
 
-// Database Connection With MongoDB
-mongoose.connect(
-  "mongodb+srv://onkaryevale2:0eSkDQLX7yfpKH3j@cluster0.oqfwexb.mongodb.net/e-commerce"
-);
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = (Date.now() - start) / 1000;
+    httpRequestCounter.inc({
+      method: req.method,
+      route: req.path,
+      status: res.statusCode,
+    });
+    httpRequestDuration.observe(
+      { method: req.method, route: req.path, status: res.statusCode },
+      duration
+    );
+  });
+  next();
+});
 
+
+// Database Connection With MongoDB
+mongoose.connect(process.env.MONGO_URI);
+
+// Prometheus metrics setup
+const collectDefaultMetrics = client.collectDefaultMetrics;
+collectDefaultMetrics();
+
+const httpRequestCounter = new client.Counter({
+  name: "http_requests_total",
+  help: "Total number of HTTP requests",
+  labelNames: ["method", "route", "status"],
+});
+const httpRequestDuration = new client.Histogram({
+  name: "http_request_duration_seconds",
+  help: "Duration of HTTP requests in seconds",
+  labelNames: ["method", "route", "status"],
+  buckets: [0.05, 0.1, 0.3, 0.5, 1, 2, 5],
+});
 // API Creation
 
 app.get("/", (req, res) => {
   res.send("Express App is Running");
 });
 
-// Image Storage Engine
-const storage = multer.diskStorage({
-  destination: "./upload/images",
-  filename: (req, file, cb) => {
-    console.log(`${file}: File Uploaded`);
-    return cb(
-      null,
-      `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`
-    );
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", client.register.contentType);
+  res.end(await client.register.metrics());
+});
+// Image Storage Engine S3
+const s3 = new S3Client({ region: process.env.AWS_REGION });
+
+const storage = multerS3({
+  s3: s3,
+  bucket: process.env.S3_BUCKET_NAME,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  key: (req, file, cb) => {
+    cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`);
   },
 });
 
 const upload = multer({ storage: storage });
 
 // Creating Upload Endpoint for images
-app.use("/images", express.static("upload/images"));
 app.post("/upload", upload.single("product"), (req, res) => {
-  console.log(req);
-  console.log(req.file);
-  console.log(req.files);
-
   res.json({
     success: 1,
-    image_url: `http://localhost:${port}/images/${req.file.filename}`,
+    image_url: req.file.location,
   });
 });
 
@@ -125,8 +160,23 @@ app.get("/allproducts", async (req, res) => {
   console.log("All Products Fetched");
   res.send(products);
 });
+app.get("/health", async (req, res) => {
+  try {
+    const dbState = mongoose.connection.readyState;
+    if (dbState === 1) {
+      console.log("HEALTH CHECK: Application OK | Database: Connected");
+      res.status(200).json({ status: "ok", database: "connected" });
+    } else {
+      console.log("HEALTH CHECK: Database Disconnected");
+      res.status(503).json({ status: "error", database: "disconnected" });
+    }
+  } catch (error) {
+    console.log("HEALTH CHECK FAILED: Error-", error.message);
+    res.status(503).json({ status: "error", message: error.message });
+  }
 
-// Schema creating for User model
+});
+// Schema creating for User 
 const Users = mongoose.model("Users", {
   name: {
     type: String,
@@ -174,7 +224,7 @@ app.post("/signup", async (req, res) => {
       id: user.id,
     },
   };
-  const token = jwt.sign(data, "secret_ecom");
+  const token = jwt.sign(data, process.env.JWT);
   res.json({ success: true, token });
 });
 
@@ -189,7 +239,7 @@ app.post("/login", async (req, res) => {
           id: user.id,
         },
       };
-      const token = jwt.sign(data, "secret_ecom");
+      const token = jwt.sign(data, process.env.JWT);
       res.json({ success: true, token });
     } else {
       res.json({ success: false, errors: "Wrong Password" });
@@ -222,7 +272,7 @@ const fetchUser = async (req, res, next) => {
     res.status(401).send({ errors: "Please authenticate using valid token" });
   } else {
     try {
-      const data = jwt.verify(token, "secret_ecom");
+      const data = jwt.verify(token, process.env.JWT);
       req.user = data.user;
       next();
     } catch (error) {

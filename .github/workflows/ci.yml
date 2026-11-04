@@ -1,0 +1,71 @@
+name: CI/CD - Build and Deploy Verification
+
+on:
+  push:
+    branches:
+      - main
+      - test
+
+jobs:
+  run_security:
+    uses: jannatyousaf/Security-Scan/.github/workflows/security-scan.yml@main
+  build-backend:
+    needs: [run_security]  
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build backend image
+        run: docker build -t ecom-backend ./backend
+
+  build-frontend:
+    needs: [run_security]  
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build frontend image
+        run: docker build -t ecom-frontend ./frontend
+
+  build-admin:
+    needs: [run_security]  
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build admin image
+        run: docker build -t ecom-admin ./admin
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend, build-admin]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd Full-Stack-eCommerce-Website-MERN-Stack
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
+            sleep 25
+            if docker exec ecom-backend wget -qO- http://localhost:4005/health; then
+              echo "HEALTH CHECK PASSED Deployment healthy — success"
+            else
+              echo "HEALTH CHECK FAILED — rolling back to $PREVIOUS_COMMIT"
+              git checkout $PREVIOUS_COMMIT
+              docker compose down
+              docker compose up -d --build
+              sleep 25
+              docker exec ecom-backend wget -qO- http://localhost:4005/health || echo "Rollback health check also failed!"
+              exit 1
+            fi
+    
