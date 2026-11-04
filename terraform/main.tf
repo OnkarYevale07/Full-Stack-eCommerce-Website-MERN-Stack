@@ -56,7 +56,7 @@ resource "aws_security_group" "ecom_sg" {
 
 resource "aws_instance" "ecom_server" {
   ami                    = "ami-03c1c093c5c9344ab"
-  instance_type          = "t3.micro"
+  instance_type          = "t3.small"
   key_name               = "jannat-key"
   vpc_security_group_ids = [aws_security_group.ecom_sg.id]
 
